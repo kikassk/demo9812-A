@@ -1,0 +1,14 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace demo5
+{
+    public static class DbHelper
+    {
+        public static string ConnectionString =
+            @"Data Source=DESKTOP-48GK9FB\MSSQLSERVERR;Initial Catalog=demo5;Persist Security Info=True;User ID=sa;Password=Demo5;Encrypt=False;TrustServerCertificate=True";
+    }
+}
