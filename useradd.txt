@@ -1,0 +1,73 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.SqlClient;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace demo5
+{
+    public partial class FormAdd : Form
+    {
+        public FormAdd()
+        {
+            InitializeComponent();
+        }
+
+        // Кнопка "Сохранить"
+        private void buttonSave_Click(object sender, EventArgs e)
+        {
+            // Проверяем, чтобы пользователь заполнил поля перед сохранением
+            if (string.IsNullOrEmpty(textName.Text) || string.IsNullOrEmpty(textArtikul.Text) || 
+                string.IsNullOrEmpty(textPrice.Text) || string.IsNullOrEmpty(textCount.Text))
+            {
+                MessageBox.Show("Пожалуйста, заполните все поля товара!", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Подключаемся к нашей базе данных
+            using (SqlConnection conn = new SqlConnection(DbHelper.ConnectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    // SQL-запрос на добавление новой строки в таблицу Товар
+                    string zapros = "INSERT INTO [Товар] (НаименованиеТовара, Артикул, Цена, Количество) " +
+                                    "VALUES (@Name, @Artikul, @Price, @Count)";
+
+                    using (SqlCommand cmd = new SqlCommand(zapros, conn))
+                    {
+                        // Передаем текст из TextBox-ов формы прямо в SQL-запрос
+                        cmd.Parameters.AddWithValue("@Name", textName.Text.Trim());
+                        cmd.Parameters.AddWithValue("@Artikul", textArtikul.Text.Trim());
+                        cmd.Parameters.AddWithValue("@Price", Convert.ToDecimal(textPrice.Text.Trim())); // Конвертируем цену в деньги
+                        cmd.Parameters.AddWithValue("@Count", Convert.ToInt32(textCount.Text.Trim()));   // Конвертируем остаток в число
+
+                        // Выполняем команду добавления на сервере
+                        cmd.ExecuteNonQuery();
+
+                        MessageBox.Show("Товар успешно добавлен в базу данных!", "Успех!", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        
+                        // Закрываем форму добавления, чтобы вернуться назад
+                        this.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Ошибка при добавлении товара: {ex.Message}", "Ошибка базы данных", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Кнопка "Отмена" — просто закрывает окно без сохранения
+        private void buttonCancel_Click(object sender, EventArgs e)
+        {
+            this.Close();
+        }
+    }
+}
