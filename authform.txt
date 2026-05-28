@@ -1,0 +1,105 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.SqlClient;
+using System.Drawing;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace demo5
+{
+    public partial class FormAuth : Form
+    {
+        public FormAuth()
+        {
+            InitializeComponent();
+        }
+
+        private void TextLogin_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void TextPassword_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(TextLogin.Text) || string.IsNullOrEmpty(TextPassword.Text))
+            {
+                MessageBox.Show("Пожалуйста заполните все поля!!", "Предпреждение!!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (SqlConnection conn = new SqlConnection(DbHelper.ConnectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    string zapros = "select id_роли, ФИО from [Пользователь] where [Логин] = @Login and [Пароль] = @Password";
+
+                    using (SqlCommand cmd = new SqlCommand(zapros, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@Login", TextLogin.Text.Trim());
+                        cmd.Parameters.AddWithValue("@Password", TextPassword.Text.Trim());
+
+                      using(SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            if(reader.Read())
+                            {
+                                int IdРоли = Convert.ToInt32(reader["id_роли"]);
+                                string fio = reader["ФИО"].ToString();
+
+                                MessageBox.Show($"Добро пожаловать {fio}!!!", "Успешный вход!!", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                              switch(IdРоли)
+                                {
+                                    case 1: FormAdmin formAdmin = new FormAdmin();
+                                        formAdmin.Show();
+                                        break;
+
+                                    case 2: FormManager formManager = new FormManager();
+                                        formManager.Show();
+                                        break;
+
+                                    default:
+                                        FormUser formUser = new FormUser();
+                                        formUser.Show();
+                                        break;
+                                }
+                                this.Hide();
+                            }
+                            else
+                            {
+                                MessageBox.Show("Неверный логин или пароль", "Предупреждение!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                            }
+                        }
+                    }
+                }
+                catch(Exception ex)
+                {
+                    MessageBox.Show($"Ошибка подключения к базе данных: {ex.Message}!", "Предупреждение!", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+
+            }
+
+
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            GuestForm form = new GuestForm();
+            form.Show();
+            this.Hide();
+        }
+    }
+    
+}
