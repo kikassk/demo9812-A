@@ -1,0 +1,273 @@
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace DekorApp
+{
+    public partial class AdminForm : Form
+    {
+        // Строка подключения к твоей базе данных
+        private string connectionString = @"Server=localhost;Database=НашДекорБд;Trusted_Connection=True;";
+        
+        // Экземпляр формы редактирования для контроля одиночного открытия (Паттерн Сpermission/Singleton-like)
+        private ProductEditForm editFormInstance = null;
+
+        public AdminForm()
+        {
+            InitializeComponent();
+            ApplyStyleGuide();
+        }
+
+        private void AdminForm_Load(object sender, EventArgs e)
+        {
+            LoadCategories();
+            LoadProducts();
+            SetupSortingComboBox();
+        }
+
+        // Применение стилей демонстрационного экзамена (Comic Sans MS, цвета фон/акцент)
+        private void ApplyStyleGuide()
+        {
+            this.Text = "Панель администратора — ООО Наш Декор";
+            this.Font = new Font("Comic Sans MS", 10, FontStyle.Regular);
+            this.BackColor = Color.FromArgb(255, 255, 255); // Основной фон белый
+
+            // Пример покраски панели заголовка или кнопок акцентным цветом #546F94 или доп. цветом #ABCFCE
+            panelHeader.BackColor = Color.FromArgb(171, 207, 206); // #ABCFCE
+            btnDeleteProduct.BackColor = Color.FromArgb(84, 111, 148); // #546F94
+            btnDeleteProduct.ForeColor = Color.White;
+            btnAddProduct.BackColor = Color.FromArgb(84, 111, 148);
+            btnAddProduct.ForeColor = Color.White;
+            btnEditProduct.BackColor = Color.FromArgb(84, 111, 148);
+            btnEditProduct.ForeColor = Color.White;
+        }
+
+        // Загрузка типов товаров в ComboBox для фильтрации
+        private void LoadCategories()
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "SELECT id_типа, НазваниеТипа FROM ТипыТоваров";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            DataTable dataTable = new DataTable();
+                            adapter.Fill(dataTable);
+
+                            // Создаем строку для выбора всех категорий сразу
+                            DataRow row = dataTable.NewRow();
+                            row["id_типа"] = 0;
+                            row["НазваниеТипа"] = "Все типы";
+                            dataTable.Rows.InsertAt(row, 0);
+
+                            cmbFilterCategory.DataSource = dataTable;
+                            cmbFilterCategory.DisplayMember = "НазваниеТипа";
+                            cmbFilterCategory.ValueMember = "id_типа";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка при загрузке категорий: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Заполнение выпадающего списка сортировки стоимости
+        private void SetupSortingComboBox()
+        {
+            cmbSortPrice.Items.Add("Без сортировки");
+            cmbSortPrice.Items.Add("Стоимость (по возрастанию)");
+            cmbSortPrice.Items.Add("Стоимость (по убыванию)");
+            cmbSortPrice.SelectedIndex = 0;
+        }
+
+        // Основной метод загрузки и фильтрации товаров
+        private void LoadProducts()
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    
+                    // Строим динамический SQL-запрос с JOIN, чтобы вытащить текстовое название типа товара в 3NF
+                    string query = @"SELECT t.id_товара, t.Артикул, t.НаименованиеТовара, t.ЕдиницаИзмерения, 
+                                            t.Цена, t.Поставщик, t.Производитель, c.НазваниеТипа, 
+                                            t.ДействующаяСкидка, t.КоличествоНаСкладе, t.ОписаниеТовара, t.Фото 
+                                     FROM Товар t
+                                     LEFT JOIN ТипыТоваров c ON t.id_типа = c.id_типа
+                                     WHERE 1=1";
+
+                    // Применяем фильтр по категории
+                    if (cmbFilterCategory.SelectedValue != null && (int)cmbFilterCategory.SelectedValue != 0)
+                    {
+                        query += " AND t.id_типа = @CategoryId";
+                    }
+
+                    // Применяем текстовый поиск по наименованию и описанию
+                    if (!string.IsNullOrWhiteSpace(txtSearch.Text))
+                    {
+                        query += " AND (t.НаименованиеТовара LIKE @SearchText OR t.ОписаниеТовара LIKE @SearchText)";
+                    }
+
+                    // Применяем сортировку цен
+                    if (cmbSortPrice.SelectedIndex == 1)
+                    {
+                        query += " ORDER BY t.Цена ASC";
+                    }
+                    else if (cmbSortPrice.SelectedIndex == 2)
+                    {
+                        query += " ORDER BY t.Цена DESC";
+                    }
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        if (cmbFilterCategory.SelectedValue != null && (int)cmbFilterCategory.SelectedValue != 0)
+                        {
+                            command.Parameters.AddWithValue("@CategoryId", (int)cmbFilterCategory.SelectedValue);
+                        }
+                        if (!string.IsNullOrWhiteSpace(txtSearch.Text))
+                        {
+                            command.Parameters.AddWithValue("@SearchText", "%" + txtSearch.Text + "%");
+                        }
+
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            DataTable dataTable = new DataTable();
+                            adapter.Fill(dataTable);
+                            dgvProducts.DataSource = dataTable;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка при загрузке списка товаров: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // События изменения фильтров, вызывающие обновление сетки данных
+        private void txtSearch_TextChanged(object sender, EventArgs e)
+        {
+            LoadProducts();
+        }
+
+        private void cmbFilterCategory_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            LoadProducts();
+        }
+
+        private void cmbSortPrice_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            LoadProducts();
+        }
+
+        // Логика безопасного удаления товара (Проверка требования: "Товар, который присутствует в заказе, удалить нельзя")
+        private void btnDeleteProduct_Click(object sender, EventArgs e)
+        {
+            if (dgvProducts.CurrentRow == null)
+            {
+                MessageBox.Show("Выберите товар для удаления из таблицы!", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string artikul = dgvProducts.CurrentRow.Cells["Артикул"].Value.ToString();
+            string productName = dgvProducts.CurrentRow.Cells["НаименованиеТовара"].Value.ToString();
+
+            DialogResult confirmResult = MessageBox.MessageBox.Show($"Вы уверены, что хотите полностью удалить товар '{productName}' (Артикул: {artikul})?", "Подтверждение удаления", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            
+            if (confirmResult == DialogResult.Yes)
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        // Проверяем наличие артикула в таблице [СоставЗаказа]
+                        string checkQuery = "SELECT COUNT(*) FROM СоставЗаказа WHERE АртикулТовара = @Artikul";
+                        using (SqlCommand checkCommand = new SqlCommand(checkQuery, connection))
+                        {
+                            checkCommand.Parameters.AddWithValue("@Artikul", artikul);
+                            int orderCount = (int)checkCommand.ExecuteScalar();
+
+                            if (orderCount > 0)
+                            {
+                                MessageBox.Show("Запрещено удалять товар! Данный товар уже добавлен в существующие заказы клиентов.", "Ошибка удаления", MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                                return;
+                            }
+                        }
+
+                        // Если проверочный барьер пройден — выполняем физическое удаление
+                        string deleteQuery = "DELETE FROM Товар WHERE Артикул = @Artikul";
+                        using (SqlCommand deleteCommand = new SqlCommand(deleteQuery, connection))
+                        {
+                            deleteCommand.Parameters.AddWithValue("@Artikul", artikul);
+                            deleteCommand.ExecuteNonQuery();
+                            MessageBox.Show("Товар успешно удален из базы данных.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            
+                            LoadProducts(); // Обновляем экран после удаления
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Ошибка выполнения операции удаления: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        // Кнопка ДОБАВЛЕНИЯ нового товара
+        private void btnAddProduct_Click(object sender, EventArgs e)
+        {
+            // Жесткая проверка: если окно уже открыто, повторно создавать форму нельзя
+            if (editFormInstance != null && !editFormInstance.IsDisposed)
+            {
+                MessageBox.Show("Окно редактирования/добавления товара уже открыто! Закройте его перед открытием нового.", "Ограничение системы", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                editFormInstance.Focus();
+                return;
+            }
+
+            // Открываем форму в режиме добавления (передаем null в качестве ID и артикула)
+            editFormInstance = new ProductEditForm(null, null, this);
+            editFormInstance.Show();
+        }
+
+        // Кнопка РЕДАКТИРОВАНИЯ существующего товара
+        private void btnEditProduct_Click(object sender, EventArgs e)
+        {
+            if (dgvProducts.CurrentRow == null)
+            {
+                MessageBox.Show("Выберите товар для редактирования!", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (editFormInstance != null && !editFormInstance.IsDisposed)
+            {
+                MessageBox.Show("Вы не можете открыть более одного окна редактирования одновременно!", "Ограничение системы", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                editFormInstance.Focus();
+                return;
+            }
+
+            int idТовара = Convert.ToInt32(dgvProducts.CurrentRow.Cells["id_товара"].Value);
+            string артикул = dgvProducts.CurrentRow.Cells["Артикул"].Value.ToString();
+
+            // Открываем форму в режиме редактирования с передачей параметров текущего товара
+            editFormInstance = new ProductEditForm(idТовара, артикул, this);
+            editFormInstance.Show();
+        }
+
+        // Публичный метод для принудительного обновления таблицы из дочерней формы
+        public void RefreshProductGrid()
+        {
+            LoadProducts();
+        }
+    }
+}
