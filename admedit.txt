@@ -1,0 +1,308 @@
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
+
+namespace DekorApp
+{
+    public partial class ProductEditForm : Form
+    {
+        private string connectionString = @"Server=localhost;Database=НашДекорБд;Trusted_Connection=True;";
+        
+        private int? currentProductId = null;
+        private string currentArtikul = null;
+        private bool isEditMode = false;
+        private AdminForm parentForm = null;
+        private string selectedImageFileName = null;
+        private string appImagesFolder = Path.Combine(Application.StartupPath, "Images");
+
+        public ProductEditForm(int? productId, string artikul, AdminForm parent)
+        {
+            InitializeComponent();
+            this.currentProductId = productId;
+            this.currentArtikul = artikul;
+            this.parentForm = parent;
+            this.isEditMode = (productId != null);
+
+            // Создаем папку Images в директории приложения, если её нет
+            if (!Directory.Exists(appImagesFolder))
+            {
+                Directory.CreateDirectory(appImagesFolder);
+            }
+        }
+
+        private void ProductEditForm_Load(object sender, EventArgs e)
+        {
+            ApplyStyleGuide();
+            LoadCategoriesComboBox();
+
+            if (isEditMode)
+            {
+                this.Text = "Редактирование товара";
+                txtId.ReadOnly = true; // При редактировании ID доступно только для чтения
+                txtArtikul.ReadOnly = true; // Артикул как уникальный ключ тоже блокируем от случайных изменений
+                LoadProductDataForEdit();
+            }
+            else
+            {
+                this.Text = "Добавление нового товара";
+                txtId.Visible = false; // ID товара при добавлении автоматически вычисляется и не отображается
+                lblId.Visible = false;
+                txtId.Text = CalculateNextProductId().ToString();
+            }
+        }
+
+        private void ApplyStyleGuide()
+        {
+            this.Font = new Font("Comic Sans MS", 10, FontStyle.Regular);
+            this.BackColor = Color.FromArgb(255, 255, 255);
+            btnSave.BackColor = Color.FromArgb(84, 111, 148);
+            btnSave.ForeColor = Color.White;
+            btnSelectPhoto.BackColor = Color.FromArgb(171, 207, 206);
+        }
+
+        // Автоматическое вычисление ID: +1 к максимальному в БД
+        private int CalculateNextProductId()
+        {
+            int nextId = 1;
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "SELECT ISNULL(MAX(id_товара), 0) + 1 FROM Товар";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        nextId = (int)command.ExecuteScalar();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка автовычисления ID: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            return nextId;
+        }
+
+        private void LoadCategoriesComboBox()
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "SELECT id_типа, НазваниеТипа FROM ТипыТоваров";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            DataTable dataTable = new DataTable();
+                            adapter.Fill(dataTable);
+                            cmbCategory.DataSource = dataTable;
+                            cmbCategory.DisplayMember = "НазваниеТипа";
+                            cmbCategory.ValueMember = "id_типа";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка заполнения типов товаров: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Заполнение полей формы актуальными значениями из БД при редактировании
+        private void LoadProductDataForEdit()
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "SELECT * FROM Товар WHERE id_товара = @ProductId";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ProductId", currentProductId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                txtId.Text = reader["id_товара"].ToString();
+                                txtArtikul.Text = reader["Артикул"].ToString();
+                                txtTitle.Text = reader["НаименованиеТовара"].ToString();
+                                txtUnit.Text = reader["ЕдиницаИзмерения"].ToString();
+                                numPrice.Value = Convert.ToDecimal(reader["Цена"]);
+                                txtProvider.Text = reader["Поставщик"].ToString();
+                                txtManufacturer.Text = reader["Производитель"].ToString();
+                                cmbCategory.SelectedValue = Convert.ToInt32(reader["id_типа"]);
+                                numDiscount.Value = Convert.ToDecimal(reader["ДействующаяСкидка"]);
+                                numQuantity.Value = Convert.ToInt32(reader["КоличествоНаСкладе"]);
+                                txtDescription.Text = reader["ОписаниеТовара"].ToString();
+                                
+                                string photoFileName = reader["Фото"].ToString();
+                                if (!string.IsNullOrEmpty(photoFileName))
+                                {
+                                    string fullPath = Path.Combine(appImagesFolder, photoFileName);
+                                    if (File.Exists(fullPath))
+                                    {
+                                        picProduct.Image = Image.FromFile(fullPath);
+                                        selectedImageFileName = photoFileName;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка загрузки данных товара: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Логика выбора изображения администратором (Ограничение: до 300х200 пикселей)
+        private void btnSelectPhoto_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Filter = "Изображения (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png";
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    using (Image img = Image.FromFile(openFileDialog.FileName))
+                    {
+                        // Проверка требований к разрешению картинки
+                        if (img.Width > 300 || img.Height > 200)
+                        {
+                            MessageBox.Show("Ошибка! Размер изображения превышает лимит. Максимальное разрешение: 300х200 пикселей.", "Ограничение изображения", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                    }
+
+                    // Сохраняем имя файла для копирования при сохранении формы
+                    string uniqueName = Guid.NewGuid().ToString() + Path.GetExtension(openFileDialog.FileName);
+                    
+                    // Временно отображаем картинку в PictureBox
+                    picProduct.Image = Image.FromFile(openFileDialog.FileName);
+                    lblTempImagePath.Text = openFileDialog.FileName; // Скрытая метка для хранения старого пути копирования
+                    selectedImageFileName = uniqueName;
+                }
+            }
+        }
+
+        // Обработчик сохранения / добавления данных
+        private void btnSave_Click(object sender, EventArgs e)
+        {
+            // Валидация обязательных полей
+            if (string.IsNullOrWhiteSpace(txtArtikul.Text) || string.IsNullOrWhiteSpace(txtTitle.Text))
+            {
+                MessageBox.Show("Заполните артикул и наименование товара!", "Валидация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Обработка логики замены картинки (Удаление старой из папки приложения)
+            if (!string.IsNullOrEmpty(lblTempImagePath.Text))
+            {
+                if (isEditMode)
+                {
+                    // Получаем старое имя файла из БД для удаления
+                    DeleteOldProductImage(currentProductId.Value);
+                }
+                
+                // Копируем новую фотографию в папку приложения
+                string destinationPath = Path.Combine(appImagesFolder, selectedImageFileName);
+                File.Copy(lblTempImagePath.Text, destinationPath, true);
+            }
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "";
+
+                    if (isEditMode)
+                    {
+                        query = @"UPDATE Товар SET 
+                                 НаименованиеТовара = @Title, ЕдиницаИзмерения = @Unit, Цена = @Price, 
+                                 Поставщик = @Provider, Производитель = @Manufacturer, id_типа = @CategoryId, 
+                                 ДействующаяСкидка = @Discount, КоличествоНаСкладе = @Quantity, 
+                                 ОписаниеТовара = @Description, Фото = @Photo
+                                 WHERE id_товара = @ProductId";
+                    }
+                    else
+                    {
+                        query = @"INSERT INTO Товар (id_товара, Артикул, НаименованиеТовара, ЕдиницаИзмерения, Цена, Поставщик, Производитель, id_типа, ДействующаяСкидка, КоличествоНаСкладе, ОписаниеТовара, Фото) 
+                                 VALUES (@ProductId, @Artikul, @Title, @Unit, @Price, @Provider, @Manufacturer, @CategoryId, @Discount, @Quantity, @Description, @Photo)";
+                    }
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ProductId", Convert.ToInt32(txtId.Text));
+                        command.Parameters.AddWithValue("@Artikul", txtArtikul.Text);
+                        command.Parameters.AddWithValue("@Title", txtTitle.Text);
+                        command.Parameters.AddWithValue("@Unit", txtUnit.Text);
+                        command.Parameters.AddWithValue("@Price", numPrice.Value);
+                        command.Parameters.AddWithValue("@Provider", txtProvider.Text);
+                        command.Parameters.AddWithValue("@Manufacturer", txtManufacturer.Text);
+                        command.Parameters.AddWithValue("@CategoryId", Convert.ToInt32(cmbCategory.SelectedValue));
+                        command.Parameters.AddWithValue("@Discount", Convert.ToDouble(numDiscount.Value));
+                        command.Parameters.AddWithValue("@Quantity", Convert.ToInt32(numQuantity.Value));
+                        command.Parameters.AddWithValue("@Description", txtDescription.Text);
+                        command.Parameters.AddWithValue("@Photo", (object)selectedImageFileName ?? DBNull.Value);
+
+                        command.ExecuteNonQuery();
+                        MessageBox.Show("Данные товара успешно сохранены в базе [НашДекорБд]!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        
+                        parentForm.RefreshProductGrid(); // Обновляем DataGridView в AdminForm
+                        this.Close(); // Закрываем форму
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка записи данных: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Вспомогательный метод удаления старого фото из файловой системы
+        private void DeleteOldProductImage(int productId)
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    string query = "SELECT Фото FROM Товар WHERE id_товара = @ProductId";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ProductId", productId);
+                        object photoObj = command.ExecuteScalar();
+                        if (photoObj != null && photoObj != DBNull.Value)
+                        {
+                            string oldFileName = photoObj.ToString();
+                            string oldFilePath = Path.Combine(appImagesFolder, oldFileName);
+                            
+                            // Вызываем сборщик мусора и убираем ссылки на файл, чтобы избежать ошибки "Файл занят другим процессом"
+                            if (picProduct.Image != null)
+                            {
+                                picProduct.Image.Dispose();
+                                picProduct.Image = null;
+                            }
+
+                            if (File.Exists(oldFilePath))
+                            {
+                                File.Delete(oldFilePath);
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Игнорируем ошибки удаления старого файла, если он заблокирован или не найден
+                }
+            }
+        }
+    }
+}
