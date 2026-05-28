@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace demo5
+{
+    public partial class GuestForm : Form
+    {
+        public GuestForm()
+        {
+            InitializeComponent();
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            FormAuth formAuth = new FormAuth();
+            formAuth.Show();
+            this.Hide();
+        }
+
+        private void GuestForm_Load(object sender, EventArgs e)
+        {
+            // TODO: данная строка кода позволяет загрузить данные в таблицу "demo5DataSet1.Товар". При необходимости она может быть перемещена или удалена.
+            this.товарTableAdapter1.Fill(this.demo5DataSet1.Товар);
+            // TODO: данная строка кода позволяет загрузить данные в таблицу "demo5DataSet.Товар". При необходимости она может быть перемещена или удалена.
+            this.товарTableAdapter.Fill(this.demo5DataSet.Товар);
+
+        }
+
+        private void textBoxSearch_TextChanged(object sender, EventArgs e)
+        {
+            string searchText = textBoxSearch.Text.Trim();
+            if(string.IsNullOrEmpty(searchText))
+            {
+                this.товарBindingSource1.Filter = null;
+            }
+            else
+            {
+                this.товарBindingSource1.Filter = $"[НаименованиеТовара] like '%{searchText}%' or [Артикул] like '%{searchText}%'";
+            }
+            
+                
+        }
+    }
+}
