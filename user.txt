@@ -1,0 +1,104 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace demo5
+{
+    public partial class FormUser : Form
+    {
+        // Переменная для ФИО вошедшего пользователя
+        private string userFio;
+
+        // Конструктор принимает ФИО из формы авторизации
+        public FormUser(string fio)
+        {
+            InitializeComponent();
+            this.userFio = fio;
+        }
+
+        // Что происходит при открытии формы
+        private void FormUser_Load(object sender, EventArgs e)
+        {
+            // Выводим имя в твой Label в верхнем углу
+            labelFio.Text = this.userFio;
+
+            // Загружаем данные в таблицу на экране
+            this.товарTableAdapter1.Fill(this.demo5DataSet1.Товар);
+        }
+
+        // Простой живой поиск (тот самый, который у тебя заработал!)
+        private void textBoxSearch_TextChanged(object sender, EventArgs e)
+        {
+            string searchText = textBoxSearch.Text.Trim();
+
+            if (string.IsNullOrEmpty(searchText))
+            {
+                this.товарBindingSource1.Filter = null; // Если пусто — показываем всё
+            }
+            else
+            {
+                // Фильтруем таблицу по наименованию или артикулу
+                this.товарBindingSource1.Filter = $"[НаименованиеТовара] like '%{searchText}%' or [Артикул] like '%{searchText}%'";
+            }
+        }
+
+        // Кнопка "Добавить товар"
+        private void buttonAddProduct_Click(object sender, EventArgs e)
+        {
+            // Создаем и открываем форму добавления как модальное окно (поверх этого)
+            FormAdd formAdd = new FormAdd();
+            formAdd.ShowDialog(); 
+
+            // Когда форму добавления закроют, этот код автоматически обновит таблицу,
+            // и новый товар сразу появится в списке!
+            this.товарTableAdapter1.Fill(this.demo5DataSet1.Товар);
+        }
+
+        // Кнопка "Выход" для смены пользователя
+        private void buttonExit_Click(object sender, EventArgs e)
+        {
+            FormAuth formAuth = new FormAuth();
+            formAuth.Show();
+            this.Hide();
+        }
+
+        // Подкраска строк (Серый, если 0 на складе. Бирюзовый, если скидка > 25)
+        private void dataGridView1_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (dataGridView1.Rows[e.RowIndex].IsNewRow) return;
+
+            DataGridViewRow row = dataGridView1.Rows[e.RowIndex];
+
+            // 1. Проверяем Количество
+            if (row.Cells["Количество"].Value != DBNull.Value && row.Cells["Количество"].Value != null)
+            {
+                int count = Convert.ToInt32(row.Cells["Количество"].Value);
+                if (count == 0)
+                {
+                    row.DefaultCellStyle.BackColor = Color.LightGray;
+                    return; 
+                }
+            }
+
+            // 2. Проверяем Скидку
+            if (row.Cells["Скидка"].Value != DBNull.Value && row.Cells["Скидка"].Value != null)
+            {
+                double discount = Convert.ToDouble(row.Cells["Скидка"].Value);
+                if (discount > 25.0)
+                {
+                    row.DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#23E1EF");
+                }
+                else
+                {
+                    row.DefaultCellStyle.BackColor = Color.White;
+                }
+            }
+        }
+    }
+}
